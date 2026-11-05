@@ -1,0 +1,88 @@
+using System;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using UnityEngine;
+
+public class SignTcpClient : MonoBehaviour
+{
+   TcpClient client;
+   NetworkStream stream;
+
+   public Animator animator;
+
+   Thread listenerThread;
+
+   void Start()
+   {
+       try
+       {
+           client = new TcpClient("127.0.0.1", 8765);
+           stream = client.GetStream();
+
+           Debug.Log("Connected to Python server.");
+
+           // Start background thread
+           listenerThread = new Thread(ListenForMessages);
+           listenerThread.Start();
+       }
+       catch (Exception e)
+       {
+           Debug.LogError("TCP Connection failed: " + e.Message);
+       }
+   }
+
+   void ListenForMessages()
+   {
+       byte[] buffer = new byte[4096];
+
+       while (true)
+       {
+           try
+           {
+               int bytesRead = stream.Read(buffer, 0, buffer.Length);
+               if (bytesRead <= 0) continue;
+
+               string json = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+               Debug.Log("Received JSON: " + json);
+
+               // Extract the animation names
+               SignMessage msg = JsonUtility.FromJson<SignMessage>(json);
+
+               foreach (var sign in msg.signs)
+               {
+                   string anim = sign.animation;
+
+                   Debug.Log("Triggering animation: " + anim);
+
+                   // Trigger on main Unity thread
+                   UnityMainThreadDispatcher.Enqueue(() =>
+                   {
+                       animator.SetTrigger(anim);
+                   });
+               }
+           }
+           catch { }
+       }
+   }
+
+   void OnApplicationQuit()
+   {
+       listenerThread?.Abort();
+       stream?.Close();
+       client?.Close();
+   }
+}
+
+[Serializable]
+public class SignMessage
+{
+   public SignEntry[] signs;
+}
+
+[Serializable]
+public class SignEntry
+{
+   public string gloss;
+   public string animation;
+}

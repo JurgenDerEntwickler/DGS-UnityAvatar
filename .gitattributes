@@ -1,0 +1,9 @@
+# Unity YAML files: always LF, merge as text
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.meta text eol=lf
+*.controller text eol=lf
+*.anim text eol=lf
+*.mat text eol=lf
+*.cs text eol=lf diff=csharp
