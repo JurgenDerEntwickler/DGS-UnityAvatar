@@ -7,15 +7,20 @@ per gloss. On the Mac the project is `~/Desktop/DGS-UnityAvatar/Signbot`
 
 ## How it works
 
-- `Assets/Scripts/SignTcpClient.cs` connects to `127.0.0.1:8765` on Start
-  (the Python server `backend/live_sign_avatar.py` must already be running).
+- `Assets/Scripts/SignTcpClient.cs` connects to `127.0.0.1:8765` and retries every
+  `reconnectDelay` (2 s) until `backend/live_sign_avatar.py` is running, also after
+  the server restarts. Start order of Python and Play does not matter.
 - It reads ONE JSON message per line, puts every sign into a queue and plays
   them one after another: fire the trigger, wait until the Animator leaves
   idle and returns to `Breathing Idle`, then the next sign.
-- Signs with `has_animation: false` fire no trigger; they get a short pause
-  (`missingSignPause`, 0.3 s) so the sentence rhythm stays.
+- Signs with `has_animation: false` fire no trigger:
+  - `fingerspell: true` (word without a sign): wait `fingerspellSecondsPerLetter`
+    (0.12 s) per letter, at most `maxFingerspellSeconds` (2 s); logged with ✋.
+    Placeholder until a fingerspelling clip exists.
+  - otherwise: short pause (`missingSignPause`, 0.3 s) so the sentence rhythm stays.
 - Inspector settings: `animator`, `host`, `port`, `idleStateName`,
-  `missingSignPause`, `gapBetweenSigns`, `maxSecondsPerSign`.
+  `missingSignPause`, `gapBetweenSigns`, `maxSecondsPerSign`,
+  `fingerspellSecondsPerLetter`, `maxFingerspellSeconds`, `reconnectDelay`.
 - `UnityMainThreadDispatcher.cs` is no longer used by the client (kept, harmless).
 
 ## Message format (from Python)
@@ -27,7 +32,8 @@ per gloss. On the Mac the project is `~/Desktop/DGS-UnityAvatar/Signbot`
 ```
 
 Mapped by `SignMessage` / `SignEntry` in `SignTcpClient.cs`. If you change
-fields, change `live_sign_avatar.py` in DGSNEW too.
+fields, change `live_sign_avatar.py` in DGSNEW too. Python sends every gloss,
+also words without a lexicon entry (`fingerspell: true`; numbers `false`).
 
 ## Assets
 

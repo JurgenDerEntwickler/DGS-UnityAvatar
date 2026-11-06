@@ -29,6 +29,15 @@ public class SignTcpClient : MonoBehaviour
     [Tooltip("Safety limit: never wait longer than this for one sign.")]
     public float maxSecondsPerSign = 10f;
 
+    [Tooltip("Time per letter for words without a sign (fingerspell=true), until a fingerspelling clip exists.")]
+    public float fingerspellSecondsPerLetter = 0.12f;
+
+    [Tooltip("Upper limit for one fingerspelled word.")]
+    public float maxFingerspellSeconds = 2f;
+
+    [Tooltip("Seconds between connection attempts while the Python server is not running.")]
+    public float reconnectDelay = 2f;
+
     TcpClient client;
     Thread listenerThread;
     volatile bool running;
@@ -47,35 +56,53 @@ public class SignTcpClient : MonoBehaviour
     }
 
     // ---------- network thread ----------
+    // Keeps trying to connect, so Play can be pressed before or after starting Python,
+    // and a restarted Python server is picked up again automatically.
     void ListenForMessages()
     {
-        try
+        bool warned = false;
+        while (running)
         {
-            client = new TcpClient(host, port);
-            Debug.Log("Connected to Python server.");
-
-            // Python sends one JSON object per line ("\n"), so read line by line.
-            // This also handles two sentences arriving at once or one arriving in pieces.
-            using (var reader = new StreamReader(client.GetStream(), Encoding.UTF8))
+            try
             {
-                string line;
-                while (running && (line = reader.ReadLine()) != null)
-                {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    SignMessage msg;
-                    try { msg = JsonUtility.FromJson<SignMessage>(line); }
-                    catch (Exception e) { Debug.LogWarning("Bad JSON: " + e.Message); continue; }
-                    if (msg?.signs == null) continue;
+                client = new TcpClient(host, port);
+                Debug.Log("Connected to Python server.");
+                warned = false;
 
-                    Debug.Log($"Received sentence: \"{msg.original_text}\" ({msg.signs.Length} signs)");
-                    foreach (var sign in msg.signs)
-                        signQueue.Enqueue(sign);
+                // Python sends one JSON object per line ("\n"), so read line by line.
+                // This also handles two sentences arriving at once or one arriving in pieces.
+                using (var reader = new StreamReader(client.GetStream(), Encoding.UTF8))
+                {
+                    string line;
+                    while (running && (line = reader.ReadLine()) != null)
+                    {
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        SignMessage msg;
+                        try { msg = JsonUtility.FromJson<SignMessage>(line); }
+                        catch (Exception e) { Debug.LogWarning("Bad JSON: " + e.Message); continue; }
+                        if (msg?.signs == null) continue;
+
+                        Debug.Log($"Received sentence: \"{msg.original_text}\" ({msg.signs.Length} signs)");
+                        foreach (var sign in msg.signs)
+                            signQueue.Enqueue(sign);
+                    }
+                }
+                if (running) Debug.LogWarning("Python server closed the connection, reconnecting ...");
+            }
+            catch (Exception e)
+            {
+                if (running && !warned)
+                {
+                    Debug.LogWarning($"Python server not reachable ({e.Message}), retrying every {reconnectDelay}s ...");
+                    warned = true;
                 }
             }
-        }
-        catch (Exception e)
-        {
-            if (running) Debug.LogError("TCP connection failed/closed: " + e.Message);
+            finally
+            {
+                client?.Close();
+                client = null;
+            }
+            if (running) Thread.Sleep((int)(reconnectDelay * 1000));
         }
     }
 
@@ -94,6 +121,13 @@ public class SignTcpClient : MonoBehaviour
             {
                 Debug.Log($"▶ {sign.gloss} ({sign.animation})");
                 yield return PlaySign(sign.animation);
+            }
+            else if (sign.fingerspell)
+            {
+                // Word without a sign: placeholder for fingerspelling, time grows with the word length.
+                float t = Mathf.Min(sign.gloss.Length * fingerspellSecondsPerLetter, maxFingerspellSeconds);
+                Debug.Log($"✋ {sign.gloss} (fingerspell, {t:0.00}s)");
+                yield return new WaitForSeconds(t);
             }
             else
             {
@@ -155,5 +189,6 @@ public class SignEntry
     public string gloss;
     public string animation;
     public bool has_animation;
+    public bool fingerspell;
     public float duration;
 }
