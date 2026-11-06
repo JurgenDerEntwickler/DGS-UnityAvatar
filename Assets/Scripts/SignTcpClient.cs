@@ -2,15 +2,24 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.IO;
-using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using UnityEngine;
+#if !UNITY_WEBGL || UNITY_EDITOR
+using System.Net.Sockets;
+#endif
 
-/// Receives sign sequences from the Python server and plays them ONE AFTER ANOTHER.
+/// Receives sign sequences and plays them ONE AFTER ANOTHER.
 /// Every word of a sentence gets its own turn: trigger -> wait until the clip has
 /// finished and the avatar is back in idle -> next sign. New sentences are appended
 /// to the same queue, so nothing is skipped.
+///
+/// Two ways in, same queue:
+///   * Editor / desktop build: TCP 127.0.0.1:8765 from backend/live_sign_avatar.py
+///     (or web_app.py --unity-editor), reconnecting automatically.
+///   * WebGL build in the website: the page calls OnSignMessage(json) via SendMessage
+///     and gets SignStarted / QueueEmpty back (Assets/Plugins/WebGL/SignBridge.jslib).
 public class SignTcpClient : MonoBehaviour
 {
     public Animator animator;
@@ -38,24 +47,58 @@ public class SignTcpClient : MonoBehaviour
     [Tooltip("Seconds between connection attempts while the Python server is not running.")]
     public float reconnectDelay = 2f;
 
-    TcpClient client;
-    Thread listenerThread;
     volatile bool running;
 
-    // Filled by the network thread, emptied by the main thread.
+    // Filled by the network thread or the web page, emptied by the main thread.
     readonly ConcurrentQueue<SignEntry> signQueue = new ConcurrentQueue<SignEntry>();
     int idleHash;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")] static extern void SignBridge_Ready(string receiverName);
+    [DllImport("__Internal")] static extern void SignBridge_SignStarted(int id);
+    [DllImport("__Internal")] static extern void SignBridge_QueueEmpty();
+#else
+    static void SignBridge_Ready(string receiverName) { }
+    static void SignBridge_SignStarted(int id) { }
+    static void SignBridge_QueueEmpty() { }
+
+    TcpClient client;
+    Thread listenerThread;
+#endif
 
     void Start()
     {
         idleHash = Animator.StringToHash(idleStateName);
         running = true;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        WebGLInput.captureAllKeyboardInput = false;   // let the page's text field get Enter/typing
+#endif
+#if !UNITY_WEBGL || UNITY_EDITOR
         listenerThread = new Thread(ListenForMessages) { IsBackground = true };
         listenerThread.Start();
+#endif
         StartCoroutine(PlayQueue());
+        SignBridge_Ready(gameObject.name);   // web page: "send me sentences now"
     }
 
-    // ---------- network thread ----------
+    // ---------- web page (WebGL): unityInstance.SendMessage(name, "OnSignMessage", json) ----------
+    public void OnSignMessage(string json) => Enqueue(json);
+
+    void Enqueue(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        SignMessage msg;
+        try { msg = JsonUtility.FromJson<SignMessage>(json); }
+        catch (Exception e) { Debug.LogWarning("Bad JSON: " + e.Message); return; }
+        if (msg?.signs == null) return;
+
+        Debug.Log($"Received sentence: \"{msg.original_text}\" ({msg.signs.Length} signs)");
+        foreach (var sign in msg.signs)
+            signQueue.Enqueue(sign);
+    }
+
+#if !UNITY_WEBGL || UNITY_EDITOR
+    // ---------- network thread (Editor / desktop) ----------
     // Keeps trying to connect, so Play can be pressed before or after starting Python,
     // and a restarted Python server is picked up again automatically.
     void ListenForMessages()
@@ -75,17 +118,7 @@ public class SignTcpClient : MonoBehaviour
                 {
                     string line;
                     while (running && (line = reader.ReadLine()) != null)
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        SignMessage msg;
-                        try { msg = JsonUtility.FromJson<SignMessage>(line); }
-                        catch (Exception e) { Debug.LogWarning("Bad JSON: " + e.Message); continue; }
-                        if (msg?.signs == null) continue;
-
-                        Debug.Log($"Received sentence: \"{msg.original_text}\" ({msg.signs.Length} signs)");
-                        foreach (var sign in msg.signs)
-                            signQueue.Enqueue(sign);
-                    }
+                        Enqueue(line);
                 }
                 if (running) Debug.LogWarning("Python server closed the connection, reconnecting ...");
             }
@@ -105,17 +138,22 @@ public class SignTcpClient : MonoBehaviour
             if (running) Thread.Sleep((int)(reconnectDelay * 1000));
         }
     }
+#endif
 
     // ---------- main thread ----------
     IEnumerator PlayQueue()
     {
+        bool busy = false;
         while (true)
         {
             if (!signQueue.TryDequeue(out var sign))
             {
+                if (busy) { busy = false; SignBridge_QueueEmpty(); }
                 yield return null;
                 continue;
             }
+            busy = true;
+            SignBridge_SignStarted(sign.id);
 
             if (sign.has_animation && HasTrigger(sign.animation))
             {
@@ -171,7 +209,9 @@ public class SignTcpClient : MonoBehaviour
     void OnApplicationQuit()
     {
         running = false;
+#if !UNITY_WEBGL || UNITY_EDITOR
         client?.Close();
+#endif
     }
 }
 
@@ -186,6 +226,7 @@ public class SignMessage
 [Serializable]
 public class SignEntry
 {
+    public int id;               // set by the web page, reported back in SignStarted (0 over TCP)
     public string gloss;
     public string animation;
     public bool has_animation;

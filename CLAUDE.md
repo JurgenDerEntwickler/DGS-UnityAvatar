@@ -5,7 +5,22 @@ Python backend (repo `JurgenDerEntwickler/DGSNEW`) and plays one sign animation
 per gloss. On the Mac the project is `~/Desktop/DGS-UnityAvatar/Signbot`
 (open it in Unity Hub via "Add project from disk").
 
-## How it works
+## Website (main use)
+
+The avatar runs as a Unity WebGL build inside the DGSNEW website (`Start.command` there).
+
+- Build: menu **DGS > Build WebGL for website** (asks for the DGSNEW folder once), or with
+  the Editor closed:
+  `Unity -batchmode -quit -projectPath <this project> -buildTarget WebGL -executeMethod WebGLBuilder.Build -buildPath <DGSNEW>/web/unity`
+  (`Assets/Editor/WebGLBuilder.cs`: gzip + decompression fallback -> `Build/avatar.*.unityweb`, ~13 MB, ~2 min).
+  Needs the "WebGL Build Support" module for 2022.3.62f3 in Unity Hub.
+- In WebGL there is no TCP and no thread: the page calls
+  `unityInstance.SendMessage(<GameObject>, "OnSignMessage", json)`.
+- Unity -> page via `Assets/Plugins/WebGL/SignBridge.jslib`: `SignBridge_Ready(name)` on Start,
+  `SignBridge_SignStarted(id)` per sign (id set by the page), `SignBridge_QueueEmpty()`.
+- `WebGLInput.captureAllKeyboardInput = false`, so the page's text field gets keyboard input.
+
+## How it works (Editor / desktop)
 
 - `Assets/Scripts/SignTcpClient.cs` connects to `127.0.0.1:8765` and retries every
   `reconnectDelay` (2 s) until `backend/live_sign_avatar.py` is running, also after
