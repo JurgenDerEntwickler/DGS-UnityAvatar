@@ -29,20 +29,20 @@ public class SignTcpClient : MonoBehaviour
     [Tooltip("Name of the idle state in the Animator (the state every sign returns to).")]
     public string idleStateName = "Breathing Idle";
 
-    [Tooltip("Pause in seconds for signs that have no animation yet (keeps the rhythm of the sentence).")]
-    public float missingSignPause = 0.3f;
+    [Tooltip("Fallback time for signs without animation when the message has no duration (Python sends one).")]
+    public float missingSignPause = 1.2f;
 
     [Tooltip("Short gap between two signs.")]
-    public float gapBetweenSigns = 0.1f;
+    public float gapBetweenSigns = 0.2f;
 
     [Tooltip("Safety limit: never wait longer than this for one sign.")]
     public float maxSecondsPerSign = 10f;
 
     [Tooltip("Time per letter for words without a sign (fingerspell=true), until a fingerspelling clip exists.")]
-    public float fingerspellSecondsPerLetter = 0.12f;
+    public float fingerspellSecondsPerLetter = 0.3f;
 
     [Tooltip("Upper limit for one fingerspelled word.")]
-    public float maxFingerspellSeconds = 2f;
+    public float maxFingerspellSeconds = 4f;
 
     [Tooltip("Seconds between connection attempts while the Python server is not running.")]
     public float reconnectDelay = 2f;
@@ -162,16 +162,19 @@ public class SignTcpClient : MonoBehaviour
             }
             else if (sign.fingerspell)
             {
-                // Word without a sign: placeholder for fingerspelling, time grows with the word length.
-                float t = Mathf.Min(sign.gloss.Length * fingerspellSecondsPerLetter, maxFingerspellSeconds);
+                // Word without a sign: placeholder for fingerspelling. Python sends the time
+                // (grows with the word length); the Inspector values are only a fallback.
+                float t = sign.duration > 0 ? sign.duration
+                    : Mathf.Min(sign.gloss.Length * fingerspellSecondsPerLetter, maxFingerspellSeconds);
                 Debug.Log($"✋ {sign.gloss} (fingerspell, {t:0.00}s)");
                 yield return new WaitForSeconds(t);
             }
             else
             {
-                // No clip yet: don't fire a trigger, just keep the timing.
-                Debug.Log($"· {sign.gloss} (no animation yet)");
-                yield return new WaitForSeconds(missingSignPause);
+                // No clip yet: don't fire a trigger, just keep the timing of a real sign.
+                float t = sign.duration > 0 ? sign.duration : missingSignPause;
+                Debug.Log($"· {sign.gloss} (no animation yet, {t:0.00}s)");
+                yield return new WaitForSeconds(t);
             }
 
             yield return new WaitForSeconds(gapBetweenSigns);
@@ -231,5 +234,5 @@ public class SignEntry
     public string animation;
     public bool has_animation;
     public bool fingerspell;
-    public float duration;
+    public float duration;       // seconds for a sign WITHOUT clip (from Python); clips use their own length
 }

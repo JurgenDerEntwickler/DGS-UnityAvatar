@@ -28,11 +28,14 @@ The avatar runs as a Unity WebGL build inside the DGSNEW website (`Start.command
 - It reads ONE JSON message per line, puts every sign into a queue and plays
   them one after another: fire the trigger, wait until the Animator leaves
   idle and returns to `Breathing Idle`, then the next sign.
-- Signs with `has_animation: false` fire no trigger:
-  - `fingerspell: true` (word without a sign): wait `fingerspellSecondsPerLetter`
-    (0.12 s) per letter, at most `maxFingerspellSeconds` (2 s); logged with ✋.
-    Placeholder until a fingerspelling clip exists.
-  - otherwise: short pause (`missingSignPause`, 0.3 s) so the sentence rhythm stays.
+- Signs with `has_animation: false` fire no trigger; they wait `duration` seconds,
+  which Python sends (DGSNEW `live_sign_avatar.py`: 1.2 s per sign, fingerspelling
+  0.3 s per letter within 1.2-4 s), so timing is tuned there without a rebuild:
+  - `fingerspell: true` (word without a sign): logged with ✋, placeholder until a
+    fingerspelling clip exists.
+  - otherwise: logged with ·, keeps the rhythm of a real sign.
+  - Inspector `missingSignPause` / `fingerspellSecondsPerLetter` / `maxFingerspellSeconds`
+    are only used if a message has no `duration`. `gapBetweenSigns` = 0.2 s.
 - Inspector settings: `animator`, `host`, `port`, `idleStateName`,
   `missingSignPause`, `gapBetweenSigns`, `maxSecondsPerSign`,
   `fingerspellSecondsPerLetter`, `maxFingerspellSeconds`, `reconnectDelay`.
