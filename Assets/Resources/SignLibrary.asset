@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64955eaa3d3487442ac18c51f3379d33, type: 3}
+  m_Name: SignLibrary
+  m_EditorClassIdentifier: 
+  idleClip: {fileID: -203655887218126122, guid: 50118574433e44f81beef8553a65ad8a, type: 3}
+  neutralClip: {fileID: 0}
+  signs:
+  - id: 1
+    gloss: DANKE
+    clip: {fileID: 7400000, guid: 28040eecc64c8814e865c91d4f01cb7f, type: 2}
+    inPoint: 0
+    outPoint: 1
+    speed: 1
+    sourceClip: {fileID: 5563964806863880417, guid: 9858c12045ae548f3b0bddded295c587, type: 3}
+  - id: 2
+    gloss: HALLO
+    clip: {fileID: 7400000, guid: 106155da760c36f41a70f646b36d7143, type: 2}
+    inPoint: 0
+    outPoint: 1
+    speed: 1
+    sourceClip: {fileID: -203655887218126122, guid: 834ddd3ad1a4644e69ff35b0d1976c00, type: 3}

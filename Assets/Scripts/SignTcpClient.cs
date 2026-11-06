@@ -47,6 +47,10 @@ public class SignTcpClient : MonoBehaviour
     [Tooltip("Seconds between connection attempts while the Python server is not running.")]
     public float reconnectDelay = 2f;
 
+    [Tooltip("Smooth sign-to-sign player. Empty = taken from this GameObject, or added automatically " +
+             "when Assets/Resources/SignLibrary.asset exists. Without it, the Animator triggers are used.")]
+    public SmoothSignPlayer smoothPlayer;
+
     volatile bool running;
 
     // Filled by the network thread or the web page, emptied by the main thread.
@@ -70,6 +74,12 @@ public class SignTcpClient : MonoBehaviour
     {
         idleHash = Animator.StringToHash(idleStateName);
         running = true;
+
+        if (smoothPlayer == null) smoothPlayer = GetComponent<SmoothSignPlayer>();
+        if (smoothPlayer == null && Resources.Load<SignLibrary>("SignLibrary") != null)
+            smoothPlayer = gameObject.AddComponent<SmoothSignPlayer>();
+        if (smoothPlayer != null && !smoothPlayer.Init(animator)) smoothPlayer = null;
+        Debug.Log(smoothPlayer != null ? "Sign playback: smooth (SignLibrary)" : "Sign playback: Animator triggers");
 #if UNITY_WEBGL && !UNITY_EDITOR
         WebGLInput.captureAllKeyboardInput = false;   // let the page's text field get Enter/typing
 #endif
@@ -155,6 +165,12 @@ public class SignTcpClient : MonoBehaviour
             busy = true;
             SignBridge_SignStarted(sign.id);
 
+            if (smoothPlayer != null)
+            {
+                yield return PlaySmooth(sign);
+                continue;   // no fixed gap: the blends do the spacing
+            }
+
             if (sign.has_animation && HasTrigger(sign.animation))
             {
                 Debug.Log($"▶ {sign.gloss} ({sign.animation})");
@@ -179,6 +195,36 @@ public class SignTcpClient : MonoBehaviour
 
             yield return new WaitForSeconds(gapBetweenSigns);
         }
+    }
+
+    // The library decides what has a clip (not has_animation), so a new sign only needs
+    // a library entry in Unity; Python's ANIMATED list no longer has to match.
+    IEnumerator PlaySmooth(SignEntry sign)
+    {
+        Func<int> waiting = () => signQueue.Count;
+        if (smoothPlayer.HasSign(sign))
+        {
+            Debug.Log($"▶ {sign.gloss} (#{sign.sign_id})");
+            yield return smoothPlayer.PlaySign(sign, waiting);
+        }
+        else if (sign.fingerspell)
+        {
+            float t = sign.duration > 0 ? sign.duration
+                : Mathf.Min(sign.gloss.Length * fingerspellSecondsPerLetter, maxFingerspellSeconds);
+            Debug.Log($"✋ {sign.gloss} (fingerspell)");
+            yield return smoothPlayer.Fingerspell(sign.gloss, t, waiting);
+        }
+        else
+        {
+            float t = sign.duration > 0 ? sign.duration : missingSignPause;
+            Debug.Log($"· {sign.gloss} (no clip, {t:0.00}s)");
+            yield return smoothPlayer.Pause(t, waiting);
+        }
+    }
+
+    void Update()
+    {
+        if (smoothPlayer != null) smoothPlayer.Backlog = signQueue.Count;
     }
 
     IEnumerator PlaySign(string trigger)
@@ -230,6 +276,7 @@ public class SignMessage
 public class SignEntry
 {
     public int id;               // set by the web page, reported back in SignStarted (0 over TCP)
+    public int sign_id;          // optional: the sign's number in the SignLibrary (0 = look up by gloss)
     public string gloss;
     public string animation;
     public bool has_animation;

@@ -45,6 +45,45 @@ The avatar runs as a Unity WebGL build inside the DGSNEW website (`Start.command
   `fingerspellSecondsPerLetter`, `maxFingerspellSeconds`, `reconnectDelay`.
 - `UnityMainThreadDispatcher.cs` is no longer used by the client (kept, harmless).
 
+## Smooth playback (SignLibrary + SmoothSignPlayer)
+
+Used automatically when `Assets/Resources/SignLibrary.asset` exists; otherwise the
+Animator triggers above are used (old path, unchanged).
+
+- `SignLibrary` (ScriptableObject): one entry per sign = `id` (number, from 1), `gloss`,
+  `clip`, `inPoint`/`outPoint` (0..1, where the sign really starts/ends in the clip),
+  `speed`, `sourceClip` (original before smoothing). Plus `idleClip` and optional `neutralClip`
+  (pose held for words without a clip). Lookup: `sign_id` first, then gloss, then animation name.
+- `SmoothSignPlayer` (Playables, no Animator states needed): crossfades sign -> sign directly
+  (`signToSignBlend` 0.18 s, smootherstep, overlapping the end of the old sign), from rest
+  `fromRestBlend` 0.3 s, holds the last pose `holdBeforeRest` 0.7 s, then back to idle
+  `toRestBlend` 0.5 s. Speeds up to `maxTempo` 1.35x when signs pile up in the queue.
+  Fingerspelling plays library entries `FS_A`, `FS_B`, ... if all letters exist.
+  It clears the Animator Controller at start (the graph drives the avatar).
+- The library decides what has a clip; `has_animation` from Python is ignored in this mode.
+- Optional message field `sign_id` (int, 0 = none) in `SignEntry`.
+- Editor: **DGS > Sign Library Tools**
+  1. Import from `SignBotController` (trigger -> clip) or from selected clips/FBX (next free id).
+  2. Auto-trim: inPoint/outPoint where arm muscles leave / return to the idle pose.
+  3. Smooth: Savitzky-Golay filter on all curves -> `Assets/SignClipsSmoothed/<GLOSS>.anim`
+     (re-run any time; always starts from `sourceClip`).
+  4. Export `sign_ids.json` (id, gloss) for the Python word -> number table.
+- Adding a sign now: import the clip (Rig: Humanoid, Loop off, root "Bake Into Pose"),
+  select it, "Add clips selected", fix the gloss, Auto-trim, Smooth, rebuild WebGL.
+
+## Rocketbox avatar
+
+- Microsoft Rocketbox (MIT, github.com/microsoft/Microsoft-Rocketbox), files in
+  `Assets/Rocketbox/<Name>/Export/<Name>_facial.fbx` + `Assets/Rocketbox/<Name>/Textures/`.
+  Use the `_facial.fbx` (has FACS `AU_..` and ARKit `AK_..` blendshapes), not the plain one.
+- `Assets/Editor/RocketboxImport.cs` replaces the original `FixRocketboxMaxImport.cs`
+  (never use both): only touches `/Rocketbox/` paths, Humanoid rig, external materials,
+  blendshapes on, textures max 2048, hair Fade. Defaults only on first import.
+- `Assets/Scripts/RocketboxFace.cs` on the avatar root: auto-blink, `Set(shape, 0..1)` /
+  `Clear()` with smooth fading; context-menu test expressions (Play mode).
+- `SignTcpClient` sits on the Rocketbox root (next to its Animator); the Mixamo `Ch23`
+  object stays in the scene but disabled until the new avatar is confirmed.
+
 ## Message format (from Python)
 
 ```json
