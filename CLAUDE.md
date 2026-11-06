@@ -19,6 +19,10 @@ The avatar runs as a Unity WebGL build inside the DGSNEW website (`Start.command
 - Unity -> page via `Assets/Plugins/WebGL/SignBridge.jslib`: `SignBridge_Ready(name)` on Start,
   `SignBridge_SignStarted(id)` per sign (id set by the page), `SignBridge_QueueEmpty()`.
 - `WebGLInput.captureAllKeyboardInput = false`, so the page's text field gets keyboard input.
+- `Assets/Scripts/SignCameraFraming.cs` frames the camera on the signing space (adds itself to the
+  main camera at start): from the fingertips of the hanging hands up to fully raised hands, arms
+  in width, legs cut; 30° FOV; measured from the humanoid skeleton, re-fits on aspect change.
+  Add the component to the Main Camera to tweak it in the Inspector.
 
 ## How it works (Editor / desktop)
 
