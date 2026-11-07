@@ -24,6 +24,24 @@
 		{
 			"Name": "MetaHumanCharacter",
 			"Enabled": true
+		},
+		{
+			"Name": "MetaHumanCalibrationProcessing",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win64",
+				"Linux",
+				"Mac"
+			]
+		},
+		{
+			"Name": "MetaHumanBodyTracker",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
 		}
 	]
 }
